@@ -4,20 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>YBM BRILiaN Dashboard</title>
-    <!-- Load Tailwind CSS -->
+    <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Load React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Load Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Load Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Load Marked.js -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- Load PapaParse (Untuk membaca CSV Spreadsheet) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <!-- Google Fonts: MONTSERRAT -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
@@ -40,15 +33,13 @@
 
     <script type="text/babel">
       // ==========================================
-      // KONFIGURASI (ISI DATA ANDA DI SINI)
+      // KONFIGURASI AMAN (Hanya URL Backend)
       // ==========================================
       
-      // 1. Masukkan Link "Publish to web" (CSV) dari Spreadsheet Anda di sini:
-      const GOOGLE_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQer5BeRxjZPEsND4IjHlCXKoBsgTOu2yUDOTKtajH5sZ6pVvvdWd-CFppMw7rrlSgUEG6qNy1S7ApB/pub?output=csv"; 
+      // Masukkan URL Web App dari Google Apps Script (Hasil Deploy) di sini:
+      const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyp5uAuavYh364fTv1-VEfMuFwe3uXVv1kEEwClnnw6vjclaL5JkazU76-IEyCp6rAT/exec"; 
       
-      // 2. Masukkan API Key Gemini Anda di sini:
-      const GEMINI_API_KEY = "AIzaSyBDt3AHhYrLOFD8XZFTIsxsxoLC-qNnhbs"; 
-
+      // CATATAN: Tidak ada API Key di sini. Semua aman di server.
       // ==========================================
 
       const { useState, useEffect, useRef } = React;
@@ -70,101 +61,7 @@
       const IconX = () => <i data-lucide="x" className="w-5 h-5"></i>;
       const IconBot = () => <i data-lucide="bot" className="w-6 h-6"></i>;
 
-      // --- LOGIKA PARSING CSV MENJADI MENU TREE ---
-      const parseCSVtoMenu = (csvText) => {
-        return new Promise((resolve) => {
-          Papa.parse(csvText, {
-            header: true, // Baris pertama dianggap header
-            skipEmptyLines: true,
-            complete: function(results) {
-              const data = results.data;
-              const menuTree = [];
-
-              data.forEach(row => {
-                // Mapping nama kolom sesuai CSV Anda (pastikan header di sheet sama)
-                // Asumsi kolom: "Menu Utama", "Sub Menu 1", dst.
-                // Jika header di sheet beda, sesuaikan string di bawah ini.
-                const levels = [
-                  row['Menu Utama'], row['Sub Menu 1'], row['Sub Menu 2'], 
-                  row['Sub Menu 3'], row['Sub Menu 4'], row['Sub Menu 5']
-                ];
-                const link = row['Sumber Link'] || row['Link'] || ''; // Coba tangkap kolom Link
-
-                let currentLevel = menuTree;
-
-                for (let i = 0; i < levels.length; i++) {
-                  const menuName = levels[i];
-                  if (!menuName || menuName === "-" || menuName.trim() === "") break;
-
-                  let existingMenu = currentLevel.find(item => item.name === menuName);
-                  if (existingMenu) {
-                    currentLevel = existingMenu.children;
-                  } else {
-                    let newNode = {
-                      id: crypto.randomUUID(),
-                      name: menuName,
-                      children: [],
-                      link: null
-                    };
-                    currentLevel.push(newNode);
-                    currentLevel = newNode.children;
-                  }
-
-                  // Cek apakah ini level terakhir yang valid untuk baris ini
-                  const isLast = (i === levels.length - 1) || (!levels[i+1] || levels[i+1] === "-");
-                  if (isLast) {
-                    // Set link pada node yang baru saja dibuat/ditemukan
-                    // Kita cari ulang node-nya di array parent (currentLevel sebelumnya)
-                    // Tapi karena pointer sudah pindah, cara termudah:
-                    // Akses node terakhir di array tempat kita push tadi.
-                    // Pointer 'currentLevel' sekarang menunjuk ke 'children' dari node baru.
-                    // Jadi link harus di-set pada parent dari pointer 'currentLevel' sekarang? 
-                    // Tidak, logic ini agak tricky. Mari sederhanakan:
-                    
-                    // Kita ulangi pencarian node terakhir
-                    // (Atau simpan referensi node saat loop)
-                  }
-                }
-              });
-              
-              // RE-BUILDING LOGIC YANG LEBIH SIMPEL DAN AKURAT
-              const finalTree = [];
-              data.forEach(row => {
-                let currentLevel = finalTree;
-                const link = row['Sumber Link'] || row['Link'];
-                
-                const cols = ['Menu Utama', 'Sub Menu 1', 'Sub Menu 2', 'Sub Menu 3', 'Sub Menu 4', 'Sub Menu 5'];
-                let path = [];
-                
-                // Ambil semua level menu yang valid
-                for(let col of cols) {
-                   if(row[col] && row[col] !== "-") path.push(row[col]);
-                   else break;
-                }
-                
-                path.forEach((name, index) => {
-                   let node = currentLevel.find(n => n.name === name);
-                   if(!node) {
-                      node = { id: Math.random().toString(36).substr(2, 9), name: name, children: [], link: null };
-                      currentLevel.push(node);
-                   }
-                   
-                   // Jika ini adalah item terakhir di path, pasang linknya
-                   if(index === path.length - 1) {
-                      node.link = link;
-                   }
-                   
-                   currentLevel = node.children;
-                });
-              });
-
-              resolve(finalTree);
-            }
-          });
-        });
-      };
-
-      // --- CHAT WIDGET (Direct Fetch Gemini) ---
+      // --- CHAT WIDGET (Aman via Apps Script) ---
       const ChatWidget = () => {
         const [isOpen, setIsOpen] = useState(false);
         const [messages, setMessages] = useState([{ sender: 'ai', text: 'Halo! Saya **YBM Assistant**. Ada yang bisa saya bantu?' }]);
@@ -175,31 +72,28 @@
         useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isOpen]);
         useEffect(() => { if (isOpen && window.lucide) setTimeout(() => window.lucide.createIcons(), 50); }, [isOpen, messages]);
 
-        const handleSend = async () => {
+        const handleSend = () => {
           if (!input.trim() || isLoading) return;
           const userMsg = { sender: 'user', text: input };
           setMessages(prev => [...prev, userMsg]);
           setInput('');
           setIsLoading(true);
 
-          try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ contents: [{ parts: [{ text: userMsg.text }] }] })
+          // Panggil Backend Apps Script (Aman)
+          fetch(`${APPS_SCRIPT_URL}?action=chat&message=${encodeURIComponent(userMsg.text)}`)
+            .then(res => res.json())
+            .then(res => {
+              if (res.status === 'success') {
+                setMessages(prev => [...prev, { sender: 'ai', text: res.reply }]);
+              } else {
+                setMessages(prev => [...prev, { sender: 'ai', text: 'Maaf, ada kendala sistem.' }]);
+              }
+              setIsLoading(false);
+            })
+            .catch(err => {
+              setMessages(prev => [...prev, { sender: 'ai', text: 'Gagal terhubung ke server.' }]);
+              setIsLoading(false);
             });
-            const data = await response.json();
-            
-            if (data.candidates && data.candidates.length > 0) {
-               setMessages(prev => [...prev, { sender: 'ai', text: data.candidates[0].content.parts[0].text }]);
-            } else {
-               setMessages(prev => [...prev, { sender: 'ai', text: 'Maaf, saya tidak mengerti.' }]);
-            }
-          } catch (error) {
-            setMessages(prev => [...prev, { sender: 'ai', text: 'Gagal terhubung ke AI.' }]);
-          } finally {
-            setIsLoading(false);
-          }
         };
 
         const renderText = (text) => {
@@ -215,7 +109,7 @@
               <div className="fixed bottom-24 right-6 w-80 md:w-96 h-[450px] bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 flex flex-col overflow-hidden animate-enter origin-bottom-right">
                 <div className="bg-blue-600 p-4 text-white flex items-center gap-3 shadow-md">
                   <div className="bg-white/20 p-2 rounded-full"><IconBot /></div>
-                  <div><h3 className="font-bold text-sm">YBM Assistant</h3><p className="text-[10px] text-blue-100">Online • Direct API</p></div>
+                  <div><h3 className="font-bold text-sm">YBM Assistant</h3><p className="text-[10px] text-blue-100">Online • Secure</p></div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50">
                   {messages.map((msg, idx) => (
@@ -267,12 +161,11 @@
         const [isAccessError, setIsAccessError] = useState(false);
 
         useEffect(() => {
-          // FETCH DATA LANGSUNG DARI CSV GOOGLE SHEETS
-          fetch(GOOGLE_CSV_URL)
-            .then(res => res.text())
-            .then(text => parseCSVtoMenu(text))
-            .then(data => {
-              setMenuData(data);
+          // Panggil Backend Apps Script untuk Data Menu (Aman)
+          fetch(`${APPS_SCRIPT_URL}?action=getMenu`)
+            .then(res => res.json())
+            .then(res => {
+              if (res.status === 'success') setMenuData(res.data);
               setLoading(false);
             })
             .catch(err => {
@@ -311,7 +204,6 @@
            );
            
            let src = selectedItem.link;
-           // Auto-fix link sharepoint
            if (src && src.includes("sharepoint") && !src.includes("embedview")) src += src.includes("?") ? "&action=embedview" : "?action=embedview";
            
            return (
